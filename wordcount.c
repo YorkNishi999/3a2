@@ -55,7 +55,7 @@ void Reduce(char *key, Getter getter,
     // printf("avalue:%p\n", avalue);
 
     sprintf(avalue, "%d", count); // Convert integer to string
-    printf("in Reduce: avalue:%s\n", avalue);
+    // printf("in Reduce: avalue:%s\n", avalue);
 
     dprintf(output_fd[partition_number],"%s %s\n", key, avalue);
     free(value);
