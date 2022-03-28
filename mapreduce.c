@@ -37,6 +37,8 @@ struct partition_data_t {
   pthread_mutex_t lock;
   int cur_kv_list_index;
   int kv_list_size;
+  int get_func_index;
+  sem_t sem;
 };
 
 unsigned long MR_DefaultHashPartition(char *key, int num_partitions) {
@@ -89,8 +91,6 @@ void map_func() {
   // multi-thread sorting for each partition in mapping threads
 }
 
-
-
 void MR_Emit(char *key, char *value) {
   int partition_num = partitioner(key, g_num_partition);
   partition_data_t* cur_partition = g_partition[partition_num];
@@ -98,6 +98,7 @@ void MR_Emit(char *key, char *value) {
   printf("key:%s, value:%s, partition:%p, cur_partition->kv_list_size:%d\n",
         key, value, cur_partition, cur_partition->kv_list_size);
 
+  // increase size 
   if (cur_partition->cur_kv_list_index >= cur_partition->kv_list_size) {
     long original_size = cur_partition->kv_list_size;
     cur_partition->kv_list_size = original_size * 2;
@@ -116,19 +117,92 @@ void MR_Emit(char *key, char *value) {
   }
 
   kv* new_kv = (kv*)malloc(sizeof(kv));
-  new_kv->key = (char*)malloc(sizeof(char)*strlen(key)+1);
-  new_kv->value = (char*)malloc(sizeof(char)*strlen(value)+1);
-  snprintf(new_kv->key, strlen(key)+1, "%s", key);
-  snprintf(new_kv->value, strlen(key)+1, "%s", value);
 
-  printf("cur_partition->cur_kv_list_index:%d\n", cur_partition->cur_kv_list_index);
-  printf("cur_partition->kv_list[cur_partition->cur_kv_list_index]:%p\n"
-      , cur_partition->kv_list);
+  // another way
+  char *key_copy = (char *)malloc(strlen(key) + 1);
+  char *value_copy = (char *)malloc(strlen(value) + 1);
+  snprintf(key_copy, strlen(key) + 1, "%s", key);
+  snprintf(value_copy, strlen(value) + 1, "%s", value);
+  new_kv->key = key_copy;
+  new_kv->value = value_copy;
+
+  // new_kv->key = (char*)malloc(sizeof(char)*strlen(key)+1);
+  // new_kv->value = (char*)malloc(sizeof(char)*strlen(value)+1);
+  // snprintf(new_kv->key, strlen(key)+1, "%s", key);
+  // snprintf(new_kv->value, strlen(key)+1, "%s", value);
+  printf("key:%s, new_kv->key:%s, value: %s, new_kv->value:%s\n",
+      key, new_kv->key, value, new_kv->value);
+
+
+  // printf("cur_partition->cur_kv_list_index:%d\n", cur_partition->cur_kv_list_index);
+  // printf("cur_partition->kv_list[cur_partition->cur_kv_list_index]:%p\n"
+  //     , cur_partition->kv_list);
   
   cur_partition->kv_list[cur_partition->cur_kv_list_index] = new_kv;
   
   cur_partition->cur_kv_list_index++;
   pthread_mutex_unlock(&cur_partition->lock);
+
+}
+
+char* get_func(char*key, int num_partition) {
+  printf("start getfunc\n");
+  partition_data_t* partition = g_partition[num_partition];
+  printf("partition->cur_kv_list_index:%d\n", partition->cur_kv_list_index);
+
+  // int idx = 0;
+  printf("ing get func: partition->get_func_index: %d\n", partition->get_func_index);
+  while(partition->get_func_index < partition->cur_kv_list_index) {
+    // printf("index:%d\n", partition->get_func_index);
+    if(strcmp(key, partition->kv_list[partition->get_func_index]->key) == 0) {
+      printf("equal dayo\n");
+      int a = partition->get_func_index;
+      partition->get_func_index++;
+      // printf("key:%s, partition->get_func_index:%d, partition->cur_kv_list_index:%d\n"
+      //     ,key, partition->get_func_index, partition->cur_kv_list_index);
+      // printf("partition->kv_list[partition->get_func_index]->key:%s\n",partition->kv_list[partition->get_func_index]->key);
+      // if (partition->get_func_index > partition->cur_kv_list_index) {
+      //   return partition->kv_list[partition->get_func_index]->value;
+      // }
+      return partition->kv_list[a]->value;
+    }
+    // partition->get_func_index++;
+    return NULL;
+  }
+  return NULL;
+
+}
+
+// void reduce_func(partition_data_t* partition) {
+void reduce_func(int* i) {
+  partition_data_t* partition = g_partition[(*i)-1];
+  pthread_mutex_lock(&partition->lock);
+  sem_wait(&partition->sem);
+  printf("reduce func thread: %ld\n", pthread_self());
+
+  printf("reduce: partition: %p\n", partition);
+
+
+  // for (int i = 0; i < partition->kv_list_size; )
+  // int index = partition->get_func_index;
+
+  printf("partition->get_func_index:%d\n", partition->get_func_index);
+  while(partition->get_func_index < partition->cur_kv_list_index) {
+    reducer(partition->kv_list[partition->get_func_index]->key, get_func, (*i)-1);
+  //   char* key = partition->kv_list[index]->key;
+  //   printf("kokokamo!\n");
+  //   printf("key:%s\n", key);
+  //   printf("reducer index:%d, partition->kv_list[index]->key:%s\n"
+  //           , index, partition->kv_list[index]->key);
+  //   reducer(partition->kv_list[index]->key, get_func, (*i)-1);
+  //   // index++;
+  //   while(strcmp(key, partition->kv_list[index]->key) == 0){
+  //     index++;
+  //   }
+  }
+
+  sem_post(&g_partition[(*i)-1]->sem);
+  pthread_mutex_unlock(&partition->lock);
 
 }
 
@@ -152,7 +226,7 @@ void MR_Run(int argc, char *argv[], Mapper map, int num_mappers,
   // init reduce
   reducer = reduce;
   g_num_reducer = num_reducers;
-  // pthread_t reducer_threads[g_num_reducer];
+  pthread_t reducer_threads[g_num_reducer];
 
   // init partition
   partitioner = partition;
@@ -168,7 +242,10 @@ void MR_Run(int argc, char *argv[], Mapper map, int num_mappers,
             (kv*)malloc(sizeof(kv));
       }
     g_partition[i]->cur_kv_list_index = 0;
+    g_partition[i]->get_func_index = 0;
     g_partition[i]->kv_list_size = INIT_NUM_KV_LIST;
+    sem_init(&g_partition[i]->sem, 0, 1);
+    pthread_mutex_init(&(g_partition[i]->lock), NULL);
   }
 
   // init arg
@@ -199,8 +276,8 @@ void MR_Run(int argc, char *argv[], Mapper map, int num_mappers,
   // for debug sort
   partition_data_t* tmps = g_partition[0];
   for (int i = 0; i < tmps->cur_kv_list_index; i++) {
-    printf("tmp->kv_list[i]->key:%s\n", tmps->kv_list[i]->key);
-    printf("tmp->kv_list[i]->value:%s\n", tmps->kv_list[i]->value);
+    printf("tmp->kv_list[%d]->key:%s\n", i, tmps->kv_list[i]->key);
+    printf("tmp->kv_list[%d]->value:%s\n", i, tmps->kv_list[i]->value);
   }
   // for debug sort
 
@@ -218,10 +295,20 @@ void MR_Run(int argc, char *argv[], Mapper map, int num_mappers,
   // for debug sort
   partition_data_t* tmp = g_partition[0];
   for (int i = 0; i < tmp->cur_kv_list_index; i++) {
-    printf("tmp->kv_list[i]->key:%s\n", tmp->kv_list[i]->key);
-    printf("tmp->kv_list[i]->value:%s\n", tmp->kv_list[i]->value);
+    printf("tmp->kv_list[%d]->key:%s\n", i, tmp->kv_list[i]->key);
+    printf("tmp->kv_list[%d]->value:%s\n", i, tmp->kv_list[i]->value);
   }
   // for debug sort
+
+  // start reduce
+  printf("start reducer\n");
+  for (int i = 0; i < num_reducers; i++) {
+    printf("i: %p, %d\n", &i, i); // for debug
+    pthread_create(&reducer_threads[i], NULL, (void*)&reduce_func, &i);
+  }
+  for (int i = 0; i < num_reducers; i++) {
+    pthread_join(reducer_threads[i], NULL);
+  }
 
 
   // release memory
