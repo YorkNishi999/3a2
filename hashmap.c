@@ -2,6 +2,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <errno.h>
+#include <pthread.h>
 #include "hashmap.h"
 
 #define FNV_OFFSET 14695981039346656037UL
@@ -13,11 +14,14 @@ HashMap* MapInit(void)
     hashmap->contents = (MapPair**) calloc(MAP_INIT_CAPACITY, sizeof(MapPair*));
     hashmap->capacity = MAP_INIT_CAPACITY;
     hashmap->size = 0;
+    pthread_rwlock_init(&(hashmap->rwlock), NULL);
+    // printf("init!\n");
     return hashmap;
 }
 
 void MapPut(HashMap* hashmap, char* key, void* value, int value_size)
 {
+    // printf("start mapput!\n");
     if (hashmap->size > (hashmap->capacity / 2)) {
         if (resize_map(hashmap) < 0) {
             exit(0);
@@ -32,28 +36,35 @@ void MapPut(HashMap* hashmap, char* key, void* value, int value_size)
     memcpy(newpair->value, value, value_size);
     h = Hash(key, hashmap->capacity);
 
+    pthread_rwlock_wrlock(&(hashmap->rwlock));
     while (hashmap->contents[h] != NULL) {
 	// if keys are equal, update
         if (!strcmp(key, hashmap->contents[h]->key)) {
             free(hashmap->contents[h]);
             hashmap->contents[h] = newpair;
+            pthread_rwlock_unlock(&(hashmap->rwlock));
             return;
         }
         h++;
-        if (h == hashmap->capacity)
+        if (h == hashmap->capacity) {
             h = 0;
+        }
     }
 
     // key not found in hashmap, h is an empty slot
     hashmap->contents[h] = newpair;
     hashmap->size += 1;
+    pthread_rwlock_unlock(&(hashmap->rwlock));
+
 }
 
 char* MapGet(HashMap* hashmap, char* key)
 {
     int h = Hash(key, hashmap->capacity);
+    pthread_rwlock_rdlock(&(hashmap->rwlock));
     while (hashmap->contents[h] != NULL) {
         if (!strcmp(key, hashmap->contents[h]->key)) {
+            pthread_rwlock_unlock(&(hashmap->rwlock));
             return hashmap->contents[h]->value;
         }
         h++;
@@ -61,6 +72,7 @@ char* MapGet(HashMap* hashmap, char* key)
             h = 0;
         }
     }
+    pthread_rwlock_unlock(&(hashmap->rwlock));
     return NULL;
 }
 
@@ -85,6 +97,7 @@ int resize_map(HashMap* map)
     int h;
     MapPair* entry;
     // rehash all the old entries to fit the new table
+    pthread_rwlock_wrlock(&(map->rwlock));
     for (i = 0; i < map->capacity; i++) {
         if (map->contents[i] != NULL)
             entry = map->contents[i];
@@ -104,6 +117,7 @@ int resize_map(HashMap* map)
     // update contents with the new table, increase hashmap capacity
     map->contents = temp;
     map->capacity = newcapacity;
+    pthread_rwlock_unlock(&(map->rwlock));
     return 0;
 }
 
