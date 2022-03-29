@@ -19,9 +19,9 @@ HashMap* MapInit(void)
 void MapPut(HashMap* hashmap, char* key, void* value, int value_size)
 {
     if (hashmap->size > (hashmap->capacity / 2)) {
-	if (resize_map(hashmap) < 0) {
-	    exit(0);
-	}
+        if (resize_map(hashmap) < 0) {
+            exit(0);
+        }
     }
     
     MapPair* newpair = (MapPair*) malloc(sizeof(MapPair));
@@ -34,14 +34,14 @@ void MapPut(HashMap* hashmap, char* key, void* value, int value_size)
 
     while (hashmap->contents[h] != NULL) {
 	// if keys are equal, update
-	if (!strcmp(key, hashmap->contents[h]->key)) {
-	    free(hashmap->contents[h]);
-	    hashmap->contents[h] = newpair;
-	    return;
-	}
-	h++;
-	if (h == hashmap->capacity)
-	    h = 0;
+        if (!strcmp(key, hashmap->contents[h]->key)) {
+            free(hashmap->contents[h]);
+            hashmap->contents[h] = newpair;
+            return;
+        }
+        h++;
+        if (h == hashmap->capacity)
+            h = 0;
     }
 
     // key not found in hashmap, h is an empty slot
@@ -53,13 +53,13 @@ char* MapGet(HashMap* hashmap, char* key)
 {
     int h = Hash(key, hashmap->capacity);
     while (hashmap->contents[h] != NULL) {
-	if (!strcmp(key, hashmap->contents[h]->key)) {
-	    return hashmap->contents[h]->value;
-	}
-	h++;
-	if (h == hashmap->capacity) {
-	    h = 0;
-	}
+        if (!strcmp(key, hashmap->contents[h]->key)) {
+            return hashmap->contents[h]->value;
+        }
+        h++;
+        if (h == hashmap->capacity) {
+            h = 0;
+        }
     }
     return NULL;
 }
@@ -86,17 +86,17 @@ int resize_map(HashMap* map)
     MapPair* entry;
     // rehash all the old entries to fit the new table
     for (i = 0; i < map->capacity; i++) {
-	if (map->contents[i] != NULL)
-	    entry = map->contents[i];
-	else 
-	    continue;
-	h = Hash(entry->key, newcapacity);
-	while (temp[h] != NULL) {
-	    h++;
-	    if (h == newcapacity)
-		h = 0;
-	}
-	temp[h] = entry;
+        if (map->contents[i] != NULL)
+            entry = map->contents[i];
+        else 
+            continue;
+        h = Hash(entry->key, newcapacity);
+        while (temp[h] != NULL) {
+            h++;
+            if (h == newcapacity)
+            h = 0;
+        }
+        temp[h] = entry;
     }
 
     // free the old table
@@ -112,9 +112,9 @@ int resize_map(HashMap* map)
 size_t Hash(char* key, size_t capacity) {
     size_t hash = FNV_OFFSET;
     for (const char *p = key; *p; p++) {
-	hash ^= (size_t)(unsigned char)(*p);
-	hash *= FNV_PRIME;
-	hash ^= (size_t)(*p);
+        hash ^= (size_t)(unsigned char)(*p);
+        hash *= FNV_PRIME;
+        hash ^= (size_t)(*p);
     }
     return (hash % capacity);
 }
