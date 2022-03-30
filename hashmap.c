@@ -21,6 +21,8 @@ HashMap* MapInit(void)
 
 void MapPut(HashMap* hashmap, char* key, void* value, int value_size)
 {
+    pthread_rwlock_wrlock(&(hashmap->rwlock));
+    
     // printf("start mapput!\n");
     if (hashmap->size > (hashmap->capacity / 2)) {
         if (resize_map(hashmap) < 0) {
@@ -36,7 +38,7 @@ void MapPut(HashMap* hashmap, char* key, void* value, int value_size)
     memcpy(newpair->value, value, value_size);
     h = Hash(key, hashmap->capacity);
 
-    pthread_rwlock_wrlock(&(hashmap->rwlock));
+    // pthread_rwlock_wrlock(&(hashmap->rwlock));
     while (hashmap->contents[h] != NULL) {
 	// if keys are equal, update
         if (!strcmp(key, hashmap->contents[h]->key)) {
@@ -97,7 +99,7 @@ int resize_map(HashMap* map)
     int h;
     MapPair* entry;
     // rehash all the old entries to fit the new table
-    pthread_rwlock_wrlock(&(map->rwlock));
+    // pthread_rwlock_wrlock(&(map->rwlock));
     for (i = 0; i < map->capacity; i++) {
         if (map->contents[i] != NULL)
             entry = map->contents[i];
@@ -117,7 +119,7 @@ int resize_map(HashMap* map)
     // update contents with the new table, increase hashmap capacity
     map->contents = temp;
     map->capacity = newcapacity;
-    pthread_rwlock_unlock(&(map->rwlock));
+    // pthread_rwlock_unlock(&(map->rwlock));
     return 0;
 }
 
